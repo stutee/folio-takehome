@@ -44,5 +44,61 @@ test('seeded share link resolves to the seeded document', function () {
     assert_true($row['title'] === 'Welcome Packet', 'unexpected title: ' . var_export($row['title'], true));
 });
 
+test('document with null published_at is immediately available', function () {
+    $stmt = db()->prepare('SELECT published_at FROM documents WHERE id = 1');
+    $stmt->execute();
+    $row = $stmt->fetch();
+    assert_true($row !== false, 'expected seeded document');
+    assert_true($row['published_at'] === null, 'expected published_at NULL on seeded doc, got: ' . var_export($row['published_at'], true));
+
+    $now = gmdate('Y-m-d H:i:s');
+    $blocked = !empty($row['published_at']) && $row['published_at'] > $now;
+    assert_true(!$blocked, 'gate should not block a doc with NULL published_at');
+});
+
+test('document scheduled in the future is blocked from view', function () {
+    $pdo = db();
+    $pdo->prepare("
+        INSERT INTO documents (title, body, created_by, published_at)
+        VALUES (?, ?, 1, datetime('now', '+1 day'))
+    ")->execute(['Future Doc', 'secret body']);
+    $docId = (int) $pdo->lastInsertId();
+
+    $token = bin2hex(random_bytes(8));
+    $pdo->prepare('INSERT INTO shares (document_id, token, recipient_email) VALUES (?, ?, ?)')
+        ->execute([$docId, $token, 'r@example.com']);
+
+    $stmt = $pdo->prepare('
+        SELECT d.published_at
+        FROM shares s
+        JOIN documents d ON d.id = s.document_id
+        WHERE s.token = ?
+    ');
+    $stmt->execute([$token]);
+    $row = $stmt->fetch();
+
+    assert_true($row !== false, 'expected the share to resolve');
+    $now = gmdate('Y-m-d H:i:s');
+    $blocked = !empty($row['published_at']) && $row['published_at'] > $now;
+    assert_true($blocked, 'gate should block a future-scheduled doc');
+});
+
+test('document scheduled in the past is available', function () {
+    $pdo = db();
+    $pdo->prepare("
+        INSERT INTO documents (title, body, created_by, published_at)
+        VALUES (?, ?, 1, datetime('now', '-1 hour'))
+    ")->execute(['Past Doc', 'body']);
+    $docId = (int) $pdo->lastInsertId();
+
+    $stmt = $pdo->prepare('SELECT published_at FROM documents WHERE id = ?');
+    $stmt->execute([$docId]);
+    $row = $stmt->fetch();
+
+    $now = gmdate('Y-m-d H:i:s');
+    $blocked = !empty($row['published_at']) && $row['published_at'] > $now;
+    assert_true(!$blocked, 'gate should not block a past-scheduled doc');
+});
+
 echo "\n{$pass} passed, {$fail} failed.\n";
 exit($fail > 0 ? 1 : 0);

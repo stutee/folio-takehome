@@ -9,21 +9,39 @@ $error = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim($_POST['title'] ?? '');
     $body = trim($_POST['body'] ?? '');
+    $publishedAtRaw = trim($_POST['published_at'] ?? '');
+    $publishedAtUtc = null;
 
     if ($title === '' || $body === '') {
         $error = 'Title and body are required.';
     } else {
-        $stmt = db()->prepare('
-            INSERT INTO documents (title, body, created_by)
-            VALUES (?, ?, ?)
-        ');
-        $stmt->execute([$title, $body, $staff['id']]);
-        $docId = (int) db()->lastInsertId();
+        if ($publishedAtRaw !== '') {
+            // (bootstrap pins PHP to America/Chicago)
+            try {
+                $dt = new DateTime($publishedAtRaw, new DateTimeZone('America/Chicago'));
+                $dt->setTimezone(new DateTimeZone('UTC'));
+                $publishedAtUtc = $dt->format('Y-m-d H:i:s');
+            } catch (Exception $e) {
+                $error = 'Invalid publish date/time.';
+            }
+        }
 
-        audit_log('create', 'document', $docId, ['title' => $title]);
+        if ($error === null) {
+            $stmt = db()->prepare('
+                INSERT INTO documents (title, body, created_by, published_at)
+                VALUES (?, ?, ?, ?)
+            ');
+            $stmt->execute([$title, $body, $staff['id'], $publishedAtUtc]);
+            $docId = (int) db()->lastInsertId();
 
-        header('Location: /admin.php?created=' . $docId);
-        exit;
+            audit_log('create', 'document', $docId, [
+                'title' => $title,
+                'published_at' => $publishedAtUtc,
+            ]);
+
+            header('Location: /admin.php?created=' . $docId);
+            exit;
+        }
     }
 }
 
@@ -58,6 +76,10 @@ render_header('Admin', $staff);
         <div class="form-field">
             <label for="body">Body</label>
             <textarea id="body" name="body" required></textarea>
+        </div>
+        <div class="form-field">
+            <label for="published_at">Publish at (optional — leave blank to publish immediately)</label>
+            <input type="datetime-local" id="published_at" name="published_at">
         </div>
         <button type="submit" class="btn">Create document</button>
     </form>

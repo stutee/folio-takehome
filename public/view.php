@@ -27,6 +27,19 @@ if (!$doc) {
     exit;
 }
 
+// Don't reveal title, body, or publish time to avoid leaking metadata.
+if (!empty($doc['published_at']) && $doc['published_at'] > gmdate('Y-m-d H:i:s')) {
+    render_header('Not available yet');
+    ?>
+    <div class="centered-message">
+        <h1>Not available yet</h1>
+        <p>This document isn't available yet. Please check back later.</p>
+    </div>
+    <?php
+    render_footer();
+    exit;
+}
+
 render_header($doc['title']);
 ?>
 

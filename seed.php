@@ -10,6 +10,16 @@ if (file_exists($dbPath)) {
 $pdo = db();
 $pdo->exec(file_get_contents(__DIR__ . '/schema.sql'));
 
+// Apply migrations in filename order.
+$migrationsDir = __DIR__ . '/migrations';
+if (is_dir($migrationsDir)) {
+    $migrationFiles = glob($migrationsDir . '/*.sql');
+    sort($migrationFiles);
+    foreach ($migrationFiles as $file) {
+        $pdo->exec(file_get_contents($file));
+    }
+}
+
 $pdo->exec("
     INSERT INTO staff (email, name) VALUES
         ('freddy@folio.example', 'Freddy Folio')
