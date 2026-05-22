@@ -100,5 +100,29 @@ test('document scheduled in the past is available', function () {
     assert_true(!$blocked, 'gate should not block a past-scheduled doc');
 });
 
+test('title search matches by substring and excludes non-matches', function () {
+    $pdo = db();
+    $pdo->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)')
+        ->execute(['Onboarding Guide', 'body']);
+    $pdo->prepare('INSERT INTO documents (title, body, created_by) VALUES (?, ?, 1)')
+        ->execute(['Welcome Letter', 'body']);
+
+    $q = 'welcome';
+    $likeQ = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
+    $stmt = $pdo->prepare("
+        SELECT title FROM documents
+        WHERE title LIKE ? ESCAPE '\\'
+        ORDER BY id ASC
+    ");
+    $stmt->execute([$likeQ]);
+    $rows = $stmt->fetchAll();
+
+    $titles = array_column($rows, 'title');
+    assert_true(count($titles) === 2, 'expected 2 matches for "welcome", got: ' . var_export($titles, true));
+    assert_true(in_array('Welcome Packet', $titles, true), 'expected seeded "Welcome Packet" to match');
+    assert_true(in_array('Welcome Letter', $titles, true), 'expected "Welcome Letter" to match');
+    assert_true(!in_array('Onboarding Guide', $titles, true), 'expected "Onboarding Guide" to be excluded');
+});
+
 echo "\n{$pass} passed, {$fail} failed.\n";
 exit($fail > 0 ? 1 : 0);

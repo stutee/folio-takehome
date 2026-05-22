@@ -45,12 +45,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$docs = db()->query('
-    SELECT d.*, s.name AS creator_name
-    FROM documents d
-    JOIN staff s ON s.id = d.created_by
-    ORDER BY d.created_at DESC
-')->fetchAll();
+$q = trim($_GET['q'] ?? '');
+
+if ($q === '') {
+    $docs = db()->query('
+        SELECT d.*, s.name AS creator_name
+        FROM documents d
+        JOIN staff s ON s.id = d.created_by
+        ORDER BY d.created_at DESC
+    ')->fetchAll();
+} else {
+    // Escape LIKE metacharacters in the query so user input is treated as literal text.
+    $likeQ = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
+    $stmt = db()->prepare("
+        SELECT d.*, s.name AS creator_name
+        FROM documents d
+        JOIN staff s ON s.id = d.created_by
+        WHERE d.title LIKE ? ESCAPE '\\'
+        ORDER BY d.created_at DESC
+    ");
+    $stmt->execute([$likeQ]);
+    $docs = $stmt->fetchAll();
+}
 
 render_header('Admin', $staff);
 ?>
@@ -87,7 +103,19 @@ render_header('Admin', $staff);
 
 <section class="card">
     <h2 class="card-title">Documents</h2>
-    <?php if (empty($docs)): ?>
+    <form method="get">
+        <div class="form-field">
+            <label for="q">Search by title</label>
+            <input type="search" id="q" name="q" value="<?= h($q) ?>" placeholder="e.g. welcome">
+        </div>
+        <button type="submit" class="btn">Search</button>
+        <?php if ($q !== ''): ?>
+            <a href="/admin.php" class="btn-link">Clear</a>
+        <?php endif ?>
+    </form>
+    <?php if (empty($docs) && $q !== ''): ?>
+        <p class="empty">No documents match <strong><?= h($q) ?></strong>.</p>
+    <?php elseif (empty($docs)): ?>    
         <p class="empty">No documents yet.</p>
     <?php else: ?>
         <table class="data">
