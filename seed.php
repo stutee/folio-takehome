@@ -35,6 +35,13 @@ $stmt->execute([
 ]);
 $docId = (int) $pdo->lastInsertId();
 
+// Generate readable IDs for older documents that do not have one yet.
+$backfillRows = $pdo->query('SELECT id, title FROM documents WHERE readable_id IS NULL')->fetchAll();
+$upd = $pdo->prepare('UPDATE documents SET readable_id = ? WHERE id = ?');
+foreach ($backfillRows as $row) {
+    $upd->execute([generate_readable_id($row['title']), (int) $row['id']]);
+}
+
 $token = random_token();
 $stmt = $pdo->prepare('
     INSERT INTO shares (document_id, token, recipient_email)

@@ -27,16 +27,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($error === null) {
+            $readableId = generate_readable_id($title);
             $stmt = db()->prepare('
-                INSERT INTO documents (title, body, created_by, published_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO documents (title, body, created_by, published_at, readable_id)
+                VALUES (?, ?, ?, ?, ?)
             ');
-            $stmt->execute([$title, $body, $staff['id'], $publishedAtUtc]);
+            $stmt->execute([$title, $body, $staff['id'], $publishedAtUtc, $readableId]);
             $docId = (int) db()->lastInsertId();
 
             audit_log('create', 'document', $docId, [
                 'title' => $title,
                 'published_at' => $publishedAtUtc,
+                'readable_id' => $readableId,
             ]);
 
             header('Location: /admin.php?created=' . $docId);
@@ -122,6 +124,7 @@ render_header('Admin', $staff);
             <thead>
                 <tr>
                     <th>ID</th>
+                    <th>Readable ID</th>
                     <th>Title</th>
                     <th>Creator</th>
                     <th>Created</th>
@@ -132,6 +135,7 @@ render_header('Admin', $staff);
                 <?php foreach ($docs as $d): ?>
                     <tr>
                         <td class="id">#<?= (int) $d['id'] ?></td>
+                        <td class="id"><?= h((string) ($d['readable_id'] ?? '')) ?></td>
                         <td><?= h($d['title']) ?></td>
                         <td><?= h($d['creator_name']) ?></td>
                         <td><?= h($d['created_at']) ?></td>

@@ -124,5 +124,43 @@ test('title search matches by substring and excludes non-matches', function () {
     assert_true(!in_array('Onboarding Guide', $titles, true), 'expected "Onboarding Guide" to be excluded');
 });
 
+test('seeded document has a backfilled readable_id matching the slug pattern', function () {
+    $stmt = db()->prepare('SELECT readable_id FROM documents WHERE id = 1');
+    $stmt->execute();
+    $row = $stmt->fetch();
+    assert_true($row !== false, 'expected seeded doc');
+    assert_true(is_string($row['readable_id']) && $row['readable_id'] !== '',
+        'expected seeded doc to be backfilled, got: ' . var_export($row['readable_id'], true));
+    assert_true(preg_match('/^welcome-packet-[a-z0-9]{4}$/', $row['readable_id']) === 1,
+        'unexpected readable_id format: ' . $row['readable_id']);
+});
+
+test('generate_readable_id produces unique, well-formed ids for the same title', function () {
+    $id1 = generate_readable_id('Hello World');
+    db()->prepare('INSERT INTO documents (title, body, created_by, readable_id) VALUES (?, ?, 1, ?)')
+        ->execute(['Hello World', 'body', $id1]);
+
+    $id2 = generate_readable_id('Hello World');
+
+    assert_true(preg_match('/^hello-world-[a-z0-9]{4}$/', $id1) === 1, 'id1 format: ' . $id1);
+    assert_true(preg_match('/^hello-world-[a-z0-9]{4}$/', $id2) === 1, 'id2 format: ' . $id2);
+    assert_true($id1 !== $id2, 'expected different ids after first was inserted, got both = ' . $id1);
+});
+
+test('unique index prevents duplicate readable_id', function () {
+    $pdo = db();
+    $pdo->prepare('INSERT INTO documents (title, body, created_by, readable_id) VALUES (?, ?, 1, ?)')
+        ->execute(['Dup Test One', 'body', 'dup-test-aaaa']);
+
+    $threw = false;
+    try {
+        $pdo->prepare('INSERT INTO documents (title, body, created_by, readable_id) VALUES (?, ?, 1, ?)')
+            ->execute(['Dup Test Two', 'body', 'dup-test-aaaa']);
+    } catch (PDOException $e) {
+        $threw = true;
+    }
+    assert_true($threw, 'expected duplicate readable_id to violate the unique index');
+});
+
 echo "\n{$pass} passed, {$fail} failed.\n";
 exit($fail > 0 ? 1 : 0);
